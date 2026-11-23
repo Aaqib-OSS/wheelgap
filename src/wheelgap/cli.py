@@ -1772,6 +1772,19 @@ def note_unpinned_requirements(sources: list[Source]) -> None:
         )
 
 
+def note_prefer_binary(sources: list[Source]) -> None:
+    """A requirements file with --prefer-binary and an unpinned requirement: pip may take an older release that has a
+    wheel than the newest, which is the one checked. A pin isn't affected."""
+    for source in sources:
+        fc = source.format_control
+        if source.requirements and fc is not None and fc.prefer_binary and unpinned_requirement_names(source):
+            print(
+                f"wheelgap: note: {fc.prefer_binary} sets --prefer-binary: for an unpinned requirement pip may take "
+                "an older release that has a wheel, and wheelgap checked the newest",
+                file=sys.stderr,
+            )
+
+
 def note_index_options(sources: list[Source]) -> None:
     """One note per requirements file that sets an index option pip reads and wheelgap doesn't (Source.index_options):
     by the option's name only, since its value may hold credentials."""
@@ -2763,6 +2776,7 @@ def _main(argv: list[str], project: Path | None = None) -> int:
             )
     if not quiet:
         note_unpinned_requirements(sources)
+        note_prefer_binary(sources)
         if origin.other_index(index_url) is None:  # with --index-url or a mirror, the run doesn't check PyPI only
             note_index_options(sources)
         for source in sources:
