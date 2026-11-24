@@ -66,7 +66,7 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 0
-      - uses: wheelgap/wheelgap@v0.13.0
+      - uses: wheelgap/wheelgap@v0.14.0
         with:
           args: uv.lock -p 3.13 -t linux-x86_64,musl-aarch64
           compare-to: base
@@ -264,7 +264,7 @@ uvx wheelgap@latest uv.lock -p 3.13 -t linux-x86_64,linux-aarch64 --json > wheel
 - `uvx wheelgap@latest` runs the newest release from PyPI. Plain
   `uvx wheelgap` can run an older one: uv uses a version installed with
   `uv tool install` unless a version is requested, and may reuse one from its
-  cache. Pin a release, such as `uvx wheelgap@0.13.0`, when the result must not
+  cache. Pin a release, such as `uvx wheelgap@0.14.0`, when the result must not
   change between runs, and check `--help` on the same command for the flags
   that release has. `pipx run wheelgap` works too.
 - Always pass `-p` and `-t`. Without them, the Python comes from
@@ -367,7 +367,7 @@ uv run wheelgap tests/fixtures/uvproj/uv.lock -p 3.13 -t linux-aarch64 --explain
 
 <!-- sample: uvproj -p 3.13 -t linux-aarch64 --explain -->
 ```text
-wheelgap 0.13.0 · uv.lock · 5 packages · Python 3.13
+wheelgap 0.14.0 · uv.lock · 5 packages · Python 3.13
 
 package                  version  linux-aarch64
 fastlib                  2.0.0    ● source
@@ -417,7 +417,7 @@ It works with pip and uv. uv's default [first-index strategy](https://docs.astra
 
 ### Which gaps it fills: `--fix`
 
-**After 0.13.0**, `--fix` first looks for an upgrade: most gaps on a new Python are in packages whose latest release
+`--fix` first looks for an upgrade: most gaps on a new Python are in packages whose latest release
 already has the wheel (PyYAML 6.0.3 has no CPython 3.15 wheel, 6.0.4 does). For each gap it names the nearest newer
 release with the wheel, the same one [`--suggest`](cli.md#suggest) would, and what to run for the input
 (`uv lock --upgrade-package pyyaml` for a uv.lock, the new pin for a requirements file); a gap wheel is only the
@@ -451,7 +451,7 @@ pip advice if the packages come from PyPI: pip treats every index alike, and whe
 `pip.conf`. uv's `exclude-newer` won't see these packages' files on this index: its pages
 are HTML, which carries no upload times. `--fix` is refused with `--offline`, and reads nothing with `--index-url` or
 a `WHEELGAP_INDEX_URL` mirror. With `--json`, the [`gap_wheels`](output.md#fix) key lists each wheel with its URL and
-SHA-256, and (**after 0.13.0**) each package's `fix` says, per gap target, whether an upgrade, a gap wheel or nothing
+SHA-256, and each package's `fix` says, per gap target, whether an upgrade, a gap wheel or nothing
 fixes it.
 
 ### GitHub Actions

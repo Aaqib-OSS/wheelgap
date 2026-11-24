@@ -20,7 +20,7 @@ Run the same command with `--explain`: it lists every wheel the target rejected 
   you install.
 - **The requirements file names another index.** pip reads `--extra-index-url`, `--index-url`, `--find-links` and
   `--no-index` lines in a requirements file and looks there too (PyTorch's CPU and CUDA wheels, a private index);
-  wheelgap doesn't, and checks PyPI's files. It says so on stderr (after 0.13.0): `requirements.txt sets
+  wheelgap doesn't, and checks PyPI's files. It says so on stderr: `requirements.txt sets
   --extra-index-url, which wheelgap doesn't read`. To check another index instead of PyPI, pass it to wheelgap's
   [`--index-url`](cli.md#index-url).
 - **A yanked wheel.** pip skips a yanked wheel when the release has other files it can use, so it builds the sdist;
@@ -79,5 +79,5 @@ gap.
 
 ## Which version of the docs is this?
 
-These pages follow the `main` branch. Anything marked **after 0.13.0** isn't released yet; the
+These pages follow the `main` branch. Anything marked **after 0.14.0** isn't released yet; the
 [changelog](https://github.com/wheelgap/wheelgap/blob/main/CHANGELOG.md) lists it under "Unreleased".

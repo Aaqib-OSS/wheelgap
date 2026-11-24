@@ -25,7 +25,7 @@ Add `set -o pipefail` when you pipe the output, so input errors still fail.
 
 <!-- sample: uvproj -p 3.13 -t linux-aarch64,musl-aarch64 -->
 ```text
-wheelgap 0.13.0 · uv.lock · 5 packages · Python 3.13
+wheelgap 0.14.0 · uv.lock · 5 packages · Python 3.13
 
 package                  version  linux-aarch64  musl-aarch64
 fastlib                  2.0.0    ● source       ● source
@@ -52,7 +52,7 @@ Each cell is one of:
 | `–` | `n/a` | not installed on this target (environment markers exclude it, or it selects another resolution) |
 | `✓ bundled` | `bundled` | no wheel on PyPI, but Pyodide ships its own build (with `--pyodide-lock`) |
 
-After 0.13.0, a run without [`--fix`](cli.md#fix) ends with a line about it when a gap could use a gap wheel; printing
+A run without [`--fix`](cli.md#fix) ends with a line about it when a gap could use a gap wheel; printing
 it never makes a request. With no gap wheel list in the [cache](how-it-works.md#cache), or with `--no-cache` or
 `--online` (which don't read the cache), it is
 `Run with --fix for a way out: an upgrade where a newer release has the wheel, else wheelgap's gap wheel index.` When an earlier `--fix` run left the
@@ -74,7 +74,7 @@ leads there on that target, so a package reached through another package's optio
 `--explain` gives the full path (`via: mcp → PyJWT → cryptography`); `--json` and quiet output keep the bare name.
 
 With [`--dockerfile-inputs`](cli.md#dockerfile-inputs), the first line names the Dockerfile line that installs each
-file (after 0.13.0): `requirements.txt (Dockerfile:4)`, and with several files each gets its own,
+file: `requirements.txt (Dockerfile:4)`, and with several files each gets its own,
 `requirements.txt (Dockerfile:4) + second.txt (Dockerfile:5)`. The line is the one the `RUN` starts on, as Docker
 numbers it, when the instruction continues over several lines. `--markdown` has the same header, and a
 [`--github-annotations`](cli.md#github-annotations) message, still placed on the requirements file's line, ends
@@ -114,7 +114,7 @@ uvloop 0.21.0 on win-arm64: ● source
 Other inputs have no dependency graph, so they show no path. If you think wheelgap got a package wrong, this output
 (or `--json --explain`) is all a bug report needs, with no need to share your lockfile.
 
-For a `uv.lock` checked with `--online`, `--explain` also names (after 0.13.0) each package that uv installs and pip
+For a `uv.lock` checked with `--online`, `--explain` also names each package that uv installs and pip
 would refuse (uv checks the `Requires-Python` lower bound; see [uv.lock](inputs.md#uvlock)), whether or not it has a
 gap:
 
@@ -389,7 +389,7 @@ suggestions render as a list under the collapsed explanation details.
 
 ## Fixes and gap wheels (--fix) {#fix}
 
-**After 0.13.0**, `--fix` starts its section with a summary of the gap cells (a package on a target) and their way out:
+`--fix` starts its section with a summary of the gap cells (a package on a target) and their way out:
 an upgrade to an official release first, an unofficial gap wheel second, else none. Only upgrades count as fixed. For a
 requirements file with `pyyaml==6.0.3`, `markupsafe==3.0.2` and `zstandard==0.25.0`, on `-p 3.15 -t
 linux-x86_64,win-amd64`:
@@ -462,7 +462,7 @@ package that isn't one of the block's own `dependencies` (uv applies sources onl
 on stderr names them. `--markdown` renders the same section with fenced code blocks, and `-q` keeps it. With nothing to fill, a
 note on stderr says so instead (not with `-q`).
 
-With `--explain` too (**after 0.13.0**), a target a newer official release fixes gets an `upgrade: NAME VERSION has
+With `--explain` too, a target a newer official release fixes gets an `upgrade: NAME VERSION has
 the wheel (an official release; see the --fix section)` line first, and each package a gap wheel fills gets a
 `gap wheel` line under its first filled target in the `--explain` output, naming the targets it fills (starting
 `if you can't upgrade, ` when an upgrade fixes one of them). The wheel is unofficial: built by wheelgap from
@@ -485,7 +485,7 @@ target label), `wheel` (its filename), `url` (where to download it) and `sha256`
 the run uses another index, or when the list couldn't be read, and absent without `--fix`. Like the other hints, it
 never changes a status, the summary or the exit code.
 
-With `--json --fix` (**after 0.13.0**), each package also gets `fix`: an object keyed by its gap target labels whose
+With `--json --fix`, each package also gets `fix`: an object keyed by its gap target labels whose
 values have `kind` and that kind's keys:
 
 - `"upgrade"`: `version` (the release), `how` (what to run or change), `constraint` (`null`, or `file`,
@@ -511,15 +511,15 @@ for inputs pip installs from as they are; a lockfile's entries have no `install`
 (JSON Schema 2020-12), which matches the wheelgap version it ships with; later versions may add keys, so ignore any
 you don't know. Keys are never renamed or removed.
 
-With [`--dockerfile-inputs`](cli.md#dockerfile-inputs) (after 0.13.0), the top-level `dockerfile_inputs` list has one
+With [`--dockerfile-inputs`](cli.md#dockerfile-inputs), the top-level `dockerfile_inputs` list has one
 entry per requirements file, in the order of `sources`: the `dockerfile` path as it was given, the `line` its `RUN`
 starts on (counted from 1; the first `RUN` that installs the file, if several do), and the `file` path relative to
 the build context, with `/` on every OS (`reqs/base.txt`), as the Dockerfile's `COPY` names it; `sources` gives its
 name only. `constraints` lists the `-c` files of that `RUN` line and `includes` the files `file` includes with `-r` or `-c`, at
-any depth (after 0.13.0), both as `file` is written and empty when there are none; what a constraints file itself
+any depth, both as `file` is written and empty when there are none; what a constraints file itself
 includes is in the note only. The key is absent without the flag.
 
-When an input is a directory (after 0.13.0), the top-level `directory_inputs` list says which of its files was read,
+When an input is a directory, the top-level `directory_inputs` list says which of its files was read,
 one entry per directory: the `directory` as it was given, the `file` relative to it with `/` on every OS
 (`backend/requirements.txt`), the `reason` (`lockfile`: a lockfile or `requirements.txt` at the root, found by its
 name; `pyproject`: the root's `pyproject.toml`; `requirements`: the root's only requirements file under another name;
@@ -530,7 +530,7 @@ check, each with its `file` and `why` (`[]` in the usual case), and `other_requi
 `compiled`, whether it looks like `pip-compile`, `uv pip compile` or `uv export` output that pins everything (a hint
 for which to check next, never used to choose; those come first), and `[]` otherwise. The key is absent when no input was a directory. See
 [Which file is read](inputs.md#which-file-is-read).
-`dockerfile_notes` (after 0.13.0) lists what a `--dockerfile` answer leaves out, one object each: the `dockerfile`
+`dockerfile_notes` lists what a `--dockerfile` answer leaves out, one object each: the `dockerfile`
 path as given, the `line` it is about (or `null`), a `kind` to match on and the `message` the note on stderr has.
 The kinds: `image-not-read` (`-p` and `-t` stood in for an [image wheelgap can't read](cli.md#dockerfile));
 `image-libc` (that image's tag says Alpine or musl, and glibc targets were checked);
@@ -541,14 +541,14 @@ because it installs no Python packages with pip or uv (`system-packages`, `shell
 install Python packages, which pip may keep instead of fetching a requirement). The key is absent when there is
 nothing to say.
 
-`dockerfile_packages` (after 0.13.0) has one entry per `RUN` line whose `pip install` names requirements on the
+`dockerfile_packages` has one entry per `RUN` line whose `pip install` names requirements on the
 line itself: `dockerfile`, `line`, the `installer` (`pip` or `uv pip`) and the `requirements` as written, variables
 replaced. Two installs on one line that read different `-r` files (`pip install -r a.txt x && pip install y`) get an
 entry each, since each file's options count for its own install's names only. Each entry is also a source of its own
 in `sources`, labelled with the line (`Dockerfile:5`). `kind` `arg-value` in
 `dockerfile_notes` says an install used an `ARG`'s default or a `--build-arg` value.
 
-`dockerfile_warnings` (after 0.13.0, always there with `--dockerfile-inputs`) lists the `RUN` lines wheelgap
+`dockerfile_warnings` (always there with `--dockerfile-inputs`) lists the `RUN` lines wheelgap
 couldn't see into, which may install Python packages the answer doesn't have: `dockerfile`, `line`, `kind`
 (`may-install`, or `may-bring` for a `COPY --from` that may carry an environment from another stage) and `message`. An empty list means every line was read or can't install any; a script should treat a
 non-empty one as "this answer is not the whole image". Each such line comes after the last install wheelgap read: one
@@ -569,17 +569,17 @@ gaps = [p["name"] for p in data["packages"] if p["results"].get(key) in ("source
 ```
 
 With `--json --explain`, each package gets `rejected` (`{"file", "reason"}` objects) and `via` (the dependency path),
-both keyed by target label like `results`; `via` is `{}` for inputs with no dependency graph, and (after 0.13.0) also
+both keyed by target label like `results`; `via` is `{}` for inputs with no dependency graph, and also
 covers targets where the package couldn't be looked up. It also
 gets `issues_url`: the package's issue tracker URL from its PyPI metadata, or `null`, and `direct`:
-for each gap target, and (after 0.13.0) each target where the package couldn't be looked up (`unknown`), the direct
+for each gap target, and each target where the package couldn't be looked up (`unknown`), the direct
 dependencies that lead to the package, as the table's `cryptography (via mcp)` names
 them (`{"win-arm64": ["mcp", "httpx"]}`). `direct` has entries only for uv.lock, Poetry 1.x and `--deps` inputs. It
 leaves out a target where the package is itself a direct dependency, and may leave one out when the lockfile doesn't
 record which direct dependency asked for an extra that leads to the package (Poetry 1.x).
 
 For a `uv.lock` checked with `--online`, a package with files that uv installs and pip would refuse (uv checks only
-the `Requires-Python` lower bound) also gets `pip_refuses` (after 0.13.0), with or without `--explain`: those files, each
+the `Requires-Python` lower bound) also gets `pip_refuses`, with or without `--explain`: those files, each
 mapped to the reason, as in `{"agent_client_protocol-0.11.1-py3-none-any.whl": "requires Python <3.15,>=3.10"}`. Its
 `results` are still uv's. See [uv.lock](inputs.md#uvlock).
 
@@ -590,7 +590,7 @@ error object on stdout instead of results, next to the usual `wheelgap: error:` 
 {"error": {"message": "nonexist.lock: no such file", "type": "SourceError"}}
 ```
 
-When a directory has several files to choose from (after 0.13.0; see
+When a directory has several files to choose from (see
 [Which file is read](inputs.md#which-file-is-read)), the error's `type` is `DirectoryChoiceError` and it also has
 `candidates`: the paths of all of them, each one an input to pass instead of the directory. The message lists the
 first 10 as commands, one per line.
@@ -612,7 +612,7 @@ wheels go in a collapsed section.
 ```markdown
 ### wheelgap: 3 of 5 packages have gaps
 
-wheelgap 0.13.0 · `uv.lock` · 5 packages · Python 3.13
+wheelgap 0.14.0 · `uv.lock` · 5 packages · Python 3.13
 
 | package | version | linux-aarch64 | musl-aarch64 |
 | --- | --- | --- | --- |
@@ -659,7 +659,7 @@ report, alongside whatever output mode you use. It has one testsuite per target 
 </testsuites>
 ```
 
-**After 0.13.0**, with `--dockerfile-inputs`, each line wheelgap couldn't see into ([`dockerfile_warnings`](#json)) is
+With `--dockerfile-inputs`, each line wheelgap couldn't see into ([`dockerfile_warnings`](#json)) is
 also a `<property name="wheelgap.dockerfile-warning" value="Dockerfile:8: …"/>` and a `system-out` line in every
 testsuite: it fails nothing, but the dashboard shows it.
 
@@ -696,7 +696,7 @@ another SARIF viewer), alongside whatever output mode you use. It has two rules,
   current directory), as for [`--github-annotations`](cli.md#github-annotations), or the file's first line when
   wheelgap can't tell the line (`pyproject.toml`, say). A package named on the command line, or read from a file
   outside the repository, has no location: its gap still fails the job, but code scanning doesn't show it.
-- **After 0.13.0**, with `--dockerfile`, a note that the final image wasn't read ([`dockerfile_notes`](#json) of kind
+- With `--dockerfile`, a note that the final image wasn't read ([`dockerfile_notes`](#json) of kind
   `image-not-read` or `image-libc`) is a `note` result of a third rule, `wheelgap/dockerfile-note`, at the `FROM`
   line (for a heredoc an old `# syntax=` line may read differently, at that instruction's line). The rule is listed only in a run that has such a result. A line `--dockerfile-inputs` couldn't see into
   ([`dockerfile_warnings`](#json)) is a `warning` result of `wheelgap/dockerfile-unseen` at that line.

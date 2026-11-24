@@ -34,8 +34,8 @@ the command line. `list_targets` and `suggest_targets` contact nothing. Like whe
 - `check_lockfile`: the same answer as `wheelgap PATH --json`, `[tool.wheelgap]`
   settings included: the packages with gaps, the ones it skipped (git, path and
   private-index packages, which aren't checked) and any notes. A project
-  directory is searched [as on the command line](inputs.md#which-file-is-read)
-  (after 0.13.0): a note names the file that was read when it isn't the
+  directory is searched [as on the command line](inputs.md#which-file-is-read):
+  a note names the file that was read when it isn't the
   directory's lockfile, and when there are several files to choose from the
   error lists them, each a `path` to call again with. It also returns
   `blocking_newer_python` when two Pythons, one newer, are checked. With
@@ -183,14 +183,14 @@ for `check_dist` the nearest folder above the dist folder with a
 | `ios` | string | `[tool.wheelgap] ios`, else `13.0` | Oldest iOS version to support, e.g. '15.0'. |
 | `android_api` | string | `[tool.wheelgap] android-api`, else `24` | Minimum Android API level to support, e.g. '26'. |
 | `pyodide_lock` | string | `[tool.wheelgap] pyodide-lock` (when a pyodide target is checked) | Absolute path or https URL of a Pyodide release's `pyodide-lock.json`. |
-| `offline` | boolean | `[tool.wheelgap] offline`; left out, a lockfile that lists its files is read without the index (not the same as `false`) | `true` uses only files recorded in the lockfile and never contacts the index. `false` (after 0.13.0; before, the same as leaving it out) rechecks on the index, as `--online` does, and overrides `offline = true` in the project for this call. Omit to use the project's default. `false` asks the index again for every PyPI package in the lockfile (one request each, cache not read); packages the lock says came from another index keep their locked files. |
+| `offline` | boolean | `[tool.wheelgap] offline`; left out, a lockfile that lists its files is read without the index (not the same as `false`) | `true` uses only files recorded in the lockfile and never contacts the index. `false` (before, the same as leaving it out) rechecks on the index, as `--online` does, and overrides `offline = true` in the project for this call. Omit to use the project's default. `false` asks the index again for every PyPI package in the lockfile (one request each, cache not read); packages the lock says came from another index keep their locked files. |
 | `dependencies` | boolean | `false` | Resolve transitive dependencies of requirements files, a conda `environment.yml`, `pyproject.toml` and a script's `# /// script` block with `--deps`; each gap gets `via` and `direct`. Refused for lockfiles, offline and another index. |
 | `extras` | array of strings | `[tool.wheelgap] extras`, else every extra of a `uv.lock` or `poetry.lock`, none of a `pyproject.toml` | Install these extras, as `--extra NAME`: a uv or Poetry project extra, or a `pyproject.toml` `[project] optional-dependencies` group. Not for `pdm.lock`. |
 | `all_extras` | boolean | `false` | Install every extra, as `--all-extras` (`uv.lock`, `poetry.lock`, `pyproject.toml`). |
 | `groups` | array of strings | `[tool.wheelgap] groups`, else every group of a lockfile, none of a `pyproject.toml` | Include these dependency groups, as `--group NAME` (`uv.lock`, Poetry 2.x `poetry.lock`, `pdm.lock`, or `pyproject.toml` `[dependency-groups]`). |
 | `only_groups` | array of strings | none | Check only these dependency groups, as `--only-group NAME`: the project's own dependencies are left out unless a group names them. |
 | `no_dev` | boolean | `false` | Leave out the `dev` group, as `--no-dev` (`uv.lock`, Poetry 2.x `poetry.lock`, `pdm.lock`; refused for `pyproject.toml`, where no group is checked unless selected). |
-| `fix` | boolean | `false` | Also return `gap_wheels`: the gaps a wheel on wheelgap's [gap wheel index](https://wheelgap.github.io/wheels/) fills, as `--fix` does. One request to wheelgap.github.io that names no package. After 0.13.0, also each gap's `fix` (a newer release with the wheel first), with one pypi.org request per gap package from PyPI. Refused with `offline`. See [Gap wheels](#gap-wheels-fix). |
+| `fix` | boolean | `false` | Also return `gap_wheels`: the gaps a wheel on wheelgap's [gap wheel index](https://wheelgap.github.io/wheels/) fills, as `--fix` does. One request to wheelgap.github.io that names no package. Also each gap's `fix` (a newer release with the wheel first), with one pypi.org request per gap package from PyPI. Refused with `offline`. See [Gap wheels](#gap-wheels-fix). |
 
 With none of these and no `[tool.wheelgap] extras` or `groups`, a `uv.lock`, `poetry.lock` or `pdm.lock` is checked
 for every extra and group, which may report gaps the deployment never installs. Match the deployment explicitly, for
@@ -210,7 +210,7 @@ leaving the argument out. Other inputs (requirements files, `Pipfile.lock`, `pyl
 | `context` | string | the Dockerfile's folder | With `inputs: true`, absolute path or `file://` URI of the folder the build context starts from, as `--dockerfile-context DIR` (for `docker build -f docker/Dockerfile .`, the folder that `.` is). |
 | `build_args` | object (string values) | `{}` | The build's `--build-arg` values, e.g. {'PYTHON_VERSION': '3.13'}: each replaces the default of the global ARG it names, as in docker build. |
 | `targets` | array of strings | the image's platform | Platforms to check instead of the image's, e.g. ['linux/arm64'] (with an Alpine image, Docker platforms mean musl). |
-| `fix` | boolean | `false` | Also return `gap_wheels`: the gaps a wheel on wheelgap's [gap wheel index](https://wheelgap.github.io/wheels/) fills, as `--fix` does. One request to wheelgap.github.io that names no package. After 0.13.0, also each gap's `fix` (a newer release with the wheel first), with one pypi.org request per gap package from PyPI. See [Gap wheels](#gap-wheels-fix). |
+| `fix` | boolean | `false` | Also return `gap_wheels`: the gaps a wheel on wheelgap's [gap wheel index](https://wheelgap.github.io/wheels/) fills, as `--fix` does. One request to wheelgap.github.io that names no package. Also each gap's `fix` (a newer release with the wheel first), with one pypi.org request per gap package from PyPI. See [Gap wheels](#gap-wheels-fix). |
 
 With `inputs: true` the tool answers "will this image build without compiling anything?" in one call, as
 `wheelgap --dockerfile DOCKERFILE --dockerfile-inputs --json` does: it checks the requirements files the final
@@ -282,12 +282,12 @@ No arguments.
   `"3.14 win-arm64"`), `wheel`, `url` and `sha256`. It's `[]` when no gap wheel fits, and `notes` says why;
 - `gap_wheel_index`: the index to install from (`https://wheelgap.github.io/wheels/simple/`);
 - `gap_wheel_about`: the page on how the wheels are built and checked;
-- (**after 0.13.0**) each entry of `gaps` gets `fix`, by target (labelled like `results`): its way out, as
+- each entry of `gaps` gets `fix`, by target (labelled like `results`): its way out, as
   [`packages[].fix`](output.md#fix) of `--json --fix`: `upgrade` (a newer release has the wheel, with `version` and
   `how`) first, then `gap_wheel`, else `none` with a `reason`; and `fix_summary` counts them.
 
 Without `fix`, none of these keys are returned and nothing is requested. With it, the server makes one request to
-wheelgap.github.io that names no package, and (**after 0.13.0**) one request to pypi.org per gap package positively
+wheelgap.github.io that names no package, and one request to pypi.org per gap package positively
 from PyPI, for its release list, as `--suggest` does. The wheels are unofficial: wheelgap builds them from the PyPI sdist, the
 package's maintainers don't. The agent should tell the user that, and ask before adding the index to project files
 (the tools never write files themselves). `fix` never changes `gaps`, `ok` or `passes`: they still report what PyPI
