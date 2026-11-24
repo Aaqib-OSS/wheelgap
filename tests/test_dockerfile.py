@@ -2630,6 +2630,249 @@ def test_dockerfile_inputs_uv_install_under_copy_dot(tmp_path):
     assert dockerfile_requirements(alone, uv_installs=set()) == [(5, requirements)]
 
 
+_KEPT_RUN = "FROM python:3.13\nWORKDIR /app\nCOPY base.txt app.txt ./\nRUN pip install -r base.txt\nRUN {} -r app.txt\n"
+
+
+def test_dockerfile_inputs_notes_a_version_pip_keeps(tmp_path):
+    """#636: without --upgrade, pip keeps a package already installed that satisfies a later requirement, where
+    wheelgap checks the newest release — say so, naming both lines and both files."""
+    path = _context(tmp_path, _KEPT_RUN.format("pip install"), ["base.txt", "app.txt"])
+    (tmp_path / "base.txt").write_text("numpy==2.1.0\n", encoding="utf-8")
+    (tmp_path / "app.txt").write_text("numpy>=2\n", encoding="utf-8")
+    report = InputsReport()
+    dockerfile_requirements(path, report=report)
+    assert report.notes == [
+        (
+            5,
+            "kept-version",
+            "numpy is already installed by line 4 (base.txt); pip keeps that version if it satisfies app.txt, "
+            "and wheelgap checked the newest release",
+        )
+    ]
+
+
+def test_dockerfile_inputs_notes_a_version_a_named_install_keeps(tmp_path):
+    """#636: a package an earlier line names directly installs it just as a -r file does, so the note names the
+    requirement it ran with."""
+    path = _context(
+        tmp_path,
+        "FROM python:3.13\nWORKDIR /app\nCOPY app.txt ./\nRUN pip install numpy==2.1.0\nRUN pip install -r app.txt\n",
+        ["app.txt"],
+    )
+    (tmp_path / "app.txt").write_text("numpy>=2\n", encoding="utf-8")
+    report = InputsReport()
+    dockerfile_requirements(path, report=report)
+    assert report.notes == [
+        (
+            5,
+            "kept-version",
+            "numpy is already installed by line 4 (pip install numpy==2.1.0); pip keeps that version if it "
+            "satisfies app.txt, and wheelgap checked the newest release",
+        )
+    ]
+
+
+def test_dockerfile_inputs_notes_a_version_a_named_requirement_keeps(tmp_path):
+    """#636: an unpinned requirement named on a later line repeats an earlier install the same way one in a -r
+    file does."""
+    path = _context(
+        tmp_path,
+        'FROM python:3.13\nWORKDIR /app\nCOPY base.txt ./\nRUN pip install -r base.txt\nRUN pip install "numpy>=2"\n',
+        ["base.txt"],
+    )
+    (tmp_path / "base.txt").write_text("numpy==2.1.0\n", encoding="utf-8")
+    report = InputsReport()
+    dockerfile_requirements(path, report=report)
+    assert report.notes == [
+        (
+            5,
+            "kept-version",
+            "numpy is already installed by line 4 (base.txt); pip keeps that version if it satisfies "
+            "numpy>=2, and wheelgap checked the newest release",
+        )
+    ]
+
+
+@pytest.mark.parametrize(
+    ("run", "app_req"),
+    [
+        ("pip install --upgrade", "numpy>=2"),  # --upgrade replaces it: newest is fetched
+        ("pip install -U", "numpy>=2"),
+        ("pip install", "numpy==2.5.5"),  # a pin is checked as written
+        ("pip install", "scipy>=1"),  # a different package isn't kept
+        # A uv line with --upgrade (uv lines are read only when every requirement is pinned).
+        ("uv pip install --system --upgrade", "numpy==2.5.5"),
+        ("pip install", "numpy>=2.2"),  # 2.1.0 doesn't satisfy it: pip replaces it with the newest match
+        ("pip install", "numpy>=2; python_version >= '3.10'"),  # a marker: installed or not depends on the target
+    ],
+)
+def test_dockerfile_inputs_no_kept_version_note(tmp_path, run, app_req):
+    path = _context(tmp_path, _KEPT_RUN.format(run), ["base.txt", "app.txt"])
+    (tmp_path / "base.txt").write_text("numpy==2.1.0\n", encoding="utf-8")
+    (tmp_path / "app.txt").write_text(f"{app_req}\n", encoding="utf-8")
+    report = InputsReport()
+    dockerfile_requirements(path, report=report, uv_installs=set())
+    assert [note for note in report.notes if note[1] == "kept-version"] == []
+
+
+def _kept_notes(tmp_path, dockerfile, texts):
+    path = _context(tmp_path, dockerfile, list(texts))
+    for name, text in texts.items():
+        (tmp_path / name).write_text(text, encoding="utf-8")
+    report = InputsReport()
+    dockerfile_requirements(path, report=report, uv_installs=set(), line_files={}, constraints={})
+    return [(line, message) for line, kind, message in report.notes if kind == "kept-version"]
+
+
+_KEPT = "pip keeps that version if it satisfies {}, and wheelgap checked the newest release"
+
+
+@pytest.mark.parametrize(
+    ("base", "app"),
+    [
+        ("numpy==2.1.0\n", "numpy\n"),  # no version at all
+        ("numpy==2.6.0rc1\n", "numpy>=2\n"),  # pip counts an installed pre-release as satisfying (pip 26.3)
+        ("numpy>=2,<2.2\n", "numpy>=2\n"),  # the earlier release isn't known: it may be kept
+    ],
+)
+def test_dockerfile_inputs_notes_a_kept_version_for_any_satisfied_range(tmp_path, base, app):
+    notes = _kept_notes(tmp_path, _KEPT_RUN.format("pip install"), {"base.txt": base, "app.txt": app})
+    assert notes == [(5, "numpy is already installed by line 4 (base.txt); " + _KEPT.format("app.txt"))]
+
+
+_KEPT_HEAD = "FROM python:3.13\nWORKDIR /app\nCOPY base.txt app.txt ./\n"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # The image's Python, then a venv's: a new venv has none of the image's packages.
+        "RUN pip install -r base.txt\nRUN python -m venv /venv && /venv/bin/pip install -r app.txt\n",
+        "RUN pip install -r base.txt\nRUN python -m venv /venv\nENV PATH=/venv/bin:$PATH\nRUN pip install -r app.txt\n",
+        # A venv's, then the image's.
+        "RUN python -m venv /venv && . /venv/bin/activate && pip install -r base.txt\nRUN pip install -r app.txt\n",
+    ],
+)
+def test_dockerfile_inputs_no_kept_version_note_in_another_environment(tmp_path, body):
+    texts = {"base.txt": "numpy==2.1.0\n", "app.txt": "numpy>=2\n"}
+    assert _kept_notes(tmp_path, _KEPT_HEAD + body, texts) == []
+
+
+def test_dockerfile_inputs_notes_a_kept_version_in_the_same_venv(tmp_path):
+    body = (
+        "RUN python -m venv /venv\nENV PATH=/venv/bin:$PATH\nRUN pip install -r base.txt\n"
+        "RUN /venv/bin/pip install -r app.txt\n"
+    )
+    texts = {"base.txt": "numpy==2.1.0\n", "app.txt": "numpy>=2\n"}
+    assert _kept_notes(tmp_path, _KEPT_HEAD + body, texts) == [
+        (7, "numpy is already installed by line 6 (base.txt); " + _KEPT.format("app.txt"))
+    ]
+
+
+def test_dockerfile_inputs_no_kept_version_note_for_a_name_beside_a_requirements_file(tmp_path):
+    # pip applies the -c lines inside app.txt to the names beside it, and c.txt pins numpy: pip installs 2.5.5.
+    dockerfile = (
+        "FROM python:3.13\nWORKDIR /app\nCOPY base.txt app.txt c.txt ./\nRUN pip install -r base.txt\n"
+        "RUN pip install -r app.txt numpy\n"
+    )
+    texts = {"base.txt": "numpy==2.1.0\n", "app.txt": "-c c.txt\npurewheel==3.1\n", "c.txt": "numpy==2.5.5\n"}
+    assert _kept_notes(tmp_path, dockerfile, texts) == []
+
+
+_THREE = "FROM python:3.13\nWORKDIR /app\nCOPY {} ./\nRUN pip install -r base.txt\n"
+
+
+@pytest.mark.parametrize(
+    ("files", "body", "texts"),
+    [
+        # A pin anywhere on the line decides: pip installs 2.3.0 for `numpy>=2` and `numpy==2.3.0` together.
+        ("base.txt app.txt", "RUN pip install -r app.txt numpy==2.3.0\n", {"app.txt": "numpy>=2\n"}),
+        (
+            "base.txt app.txt pin.txt",
+            "RUN pip install -r app.txt -r pin.txt\n",
+            {"app.txt": "numpy>=2\n", "pin.txt": "numpy==2.3.0\n"},
+        ),
+        # A middle line whose requirement has a marker (2.5.5 on Python 3.10 and later) leaves what's installed
+        # unknown, so line 6 names no earlier line.
+        (
+            "base.txt mid.txt app.txt",
+            "RUN pip install -r mid.txt\nRUN pip install -r app.txt\n",
+            {"mid.txt": "numpy==2.5.5; python_version >= '3.10'\n", "app.txt": "numpy>=1\n"},
+        ),
+        # So does an unpinned name beside a -r file whose -c line pins it (pip installs 2.5.5).
+        (
+            "base.txt mid.txt c.txt app.txt",
+            "RUN pip install -r mid.txt numpy\nRUN pip install -r app.txt\n",
+            {"mid.txt": "-c c.txt\npurewheel==3.1\n", "c.txt": "numpy==2.5.5\n", "app.txt": "numpy>=1\n"},
+        ),
+        # pip installs a lock's own versions over what is there (pip 26.3 uninstalls the earlier one).
+        (
+            "base.txt pylock.toml app.txt",
+            "RUN pip install -r pylock.toml\nRUN pip install -r app.txt\n",
+            {
+                "pylock.toml": 'lock-version = "1.0"\ncreated-by = "pip"\n\n[[packages]]\nname = "numpy"\n'
+                'version = "2.5.5"\n',
+                "app.txt": "numpy>=1\n",
+            },
+        ),
+    ],
+)
+def test_dockerfile_inputs_no_kept_version_note_when_pip_replaces_it(tmp_path, files, body, texts):
+    texts = {"base.txt": "numpy==2.1.0\n", **texts}
+    assert _kept_notes(tmp_path, _THREE.format(files) + body, texts) == []
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        # uv's --system passes over a venv's Python on the PATH and installs for the image's own (uv 0.13.1).
+        "RUN python -m venv /venv\nENV PATH=/venv/bin:$PATH\nRUN uv pip install --system -r base.txt\n"
+        "RUN pip install -r app.txt\n",
+        # --clear empties the venv.
+        "RUN python -m venv /venv\nRUN /venv/bin/pip install -r base.txt\nRUN python -m venv --clear /venv\n"
+        "RUN /venv/bin/pip install -r app.txt\n",
+    ],
+)
+def test_dockerfile_inputs_no_kept_version_note_in_an_emptied_or_other_environment(tmp_path, body):
+    texts = {"base.txt": "numpy==2.1.0\n", "app.txt": "numpy>=2\n"}
+    assert _kept_notes(tmp_path, _KEPT_HEAD + body, texts) == []
+
+
+@pytest.mark.parametrize(
+    ("base", "mid", "expected"),
+    [
+        # Line 5's pin replaces line 4's: that is the version line 6 finds.
+        ("numpy==2.1.0\n", "numpy==2.5.5\n", [(6, "line 5 (mid.txt)")]),
+        # 1.26.4 doesn't satisfy line 5's range, so line 5 installs the newest match, which line 6 finds.
+        ("numpy==1.26.4\n", "numpy>=2\n", [(6, "line 5 (mid.txt)")]),
+        # Line 5 keeps line 4's 2.1.0, and so does line 6.
+        ("numpy==2.1.0\n", "numpy>=2\n", [(5, "line 4 (base.txt)"), (6, "line 4 (base.txt)")]),
+    ],
+)
+def test_dockerfile_inputs_kept_version_names_the_install_that_put_it_there(tmp_path, base, mid, expected):
+    dockerfile = (
+        "FROM python:3.13\nWORKDIR /app\nCOPY base.txt mid.txt app.txt ./\nRUN pip install -r base.txt\n"
+        "RUN pip install -r mid.txt\nRUN pip install -r app.txt\n"
+    )
+    notes = _kept_notes(tmp_path, dockerfile, {"base.txt": base, "mid.txt": mid, "app.txt": "numpy>=1\n"})
+    where = {5: "mid.txt", 6: "app.txt"}
+    assert notes == [
+        (line, f"numpy is already installed by {by}; " + _KEPT.format(where[line])) for line, by in expected
+    ]
+
+
+def test_cli_dockerfile_inputs_prints_the_kept_version_note(tmp_path, capsys, fake_pypi):
+    path = _context(tmp_path, _KEPT_RUN.format("pip install"), ["base.txt", "app.txt"])
+    (tmp_path / "base.txt").write_text("purewheel==3.1\n", encoding="utf-8")
+    (tmp_path / "app.txt").write_text("purewheel>=3\n", encoding="utf-8")
+    main(["--dockerfile", str(path), "--dockerfile-inputs"])
+    err = capsys.readouterr().err
+    assert (
+        f"{path}:5: purewheel is already installed by line 4 (base.txt); pip keeps that version if it "
+        "satisfies app.txt, and wheelgap checked the newest release" in err
+    )
+
+
 def test_cli_dockerfile_inputs_checks_a_uv_install_as_uv_installs_it(tmp_path, capsys, fake_pypi, monkeypatch):
     """uv ignores a Requires-Python upper bound that makes pip refuse a pin, so the same file gets uv's answer under
     `RUN uv pip install` and pip's under `RUN pip install`."""
