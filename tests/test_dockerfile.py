@@ -4806,6 +4806,148 @@ def test_dockerfile_requirements_passes_over_a_global_install_of_named_packages(
     assert lines == [5] and report.warnings == [] and list(report.passed_over) == ["programs"]
 
 
+# npm runs the root package.json's lifecycle scripts only for an install with no package named (#725), so a
+# local install of named packages is a plain program too.
+@pytest.mark.parametrize("run", ["npm install left-pad --no-save", "npm i left-pad", "npm add left-pad@1"])
+def test_dockerfile_requirements_passes_over_a_local_npm_install_of_named_packages(tmp_path, run):
+    lines, report = _inputs(tmp_path, f"RUN {run}\n{_INSTALL}")
+    assert lines == [5] and report.warnings == [] and list(report.passed_over) == ["programs"]
+    # With --deps too: a plain program isn't a stop before the install.
+    path = _context(tmp_path, f"FROM python:3.13\nWORKDIR /app\nCOPY requirements.txt .\nRUN {run}\n{_INSTALL}")
+    found = dockerfile_requirements(path, constraints={}, dependencies=True)
+    assert [line for line, _ in found] == [5]
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        "npm install",
+        "npm install --no-save",
+        "npm install ./tools/x",
+        "npm install file:../lib",
+        # The value of an option that takes one is no package: these are all bare installs of a project.
+        "npm install --prefix frontend",
+        "npm --prefix web install",
+        "npm -C web install",
+        "npm install --omit dev",
+        "npm install -w web",
+        "npm install --registry https://npm.example.test",
+        # A local tarball or a file: alias installs the project's own code too.
+        "npm install dist/app-1.0.0.tgz",
+        "npm install dist/app-1.0.0.tar.gz",
+        "npm install mylib@file:../lib",
+    ],
+)
+def test_dockerfile_requirements_warns_about_a_local_npm_install_of_the_project(tmp_path, run):
+    # No package named, or a path: the project's own scripts run, before the install and after it.
+    _, report = _inputs(tmp_path, f"RUN {run}\n{_INSTALL}")
+    assert [line for line, _ in report.warnings] == [4]
+    _, report = _inputs(tmp_path, f"{_INSTALL}RUN {run}\n")
+    assert [line for line, _ in report.warnings] == [5]
+    # With --deps, a bare install before the pip install still stops the read.
+    path = _context(tmp_path, f"FROM python:3.13\nWORKDIR /app\nCOPY requirements.txt .\nRUN {run}\n{_INSTALL}")
+    with pytest.raises(DockerfileError, match="runs the project's own code"):
+        dockerfile_requirements(path, constraints={}, dependencies=True)
+
+
+@pytest.mark.parametrize(
+    "run",
+    [
+        # A registry package named after the option's value: still a plain program.
+        "npm install --registry https://npm.example.test left-pad",
+        "npm install --omit dev left-pad",
+        "npm install -w web left-pad",
+    ],
+)
+def test_dockerfile_requirements_passes_over_an_npm_install_named_after_its_options(tmp_path, run):
+    lines, report = _inputs(tmp_path, f"RUN {run}\n{_INSTALL}")
+    assert lines == [5] and report.warnings == [] and list(report.passed_over) == ["programs"]
+
+
+# A local named npm install is a plain program only while no package.json can be in its working folder yet: a
+# project's workspaces and file: dependencies are its own code, which the pass-over can't rule out otherwise.
+@pytest.mark.parametrize(
+    ("body", "files"),
+    [
+        # Before anything is copied in at all.
+        (
+            "RUN npm install left-pad\nCOPY requirements.txt .\nRUN pip install -r requirements.txt\n",
+            ("requirements.txt",),
+        ),
+        # A copy that can't carry one.
+        (
+            "COPY requirements.txt .\nRUN npm install left-pad\nRUN pip install -r requirements.txt\n",
+            ("requirements.txt",),
+        ),
+        # A global install runs the package's own scripts wherever it is: always a plain program.
+        (
+            "COPY package.json .\nRUN npm install -g left-pad\nCOPY requirements.txt .\n"
+            "RUN pip install -r requirements.txt\n",
+            ("requirements.txt", "package.json"),
+        ),
+    ],
+)
+def test_dockerfile_requirements_passes_over_a_local_npm_install_without_a_package_json(tmp_path, body, files):
+    head = "FROM python:3.13\nWORKDIR /app\n"
+    path = _context(tmp_path, head + body, files)
+    report = InputsReport()
+    found = dockerfile_requirements(path, report=report, uv_installs=set(), constraints={})
+    assert [line for line, _ in found] == [len((head + body).splitlines())]
+    assert report.warnings == [] and list(report.passed_over) == ["programs"]
+
+
+@pytest.mark.parametrize(
+    ("copy", "files"),
+    [
+        ("COPY package.json .\n", ("requirements.txt", "package.json")),
+        ("COPY . .\n", ("requirements.txt", "package.json")),
+    ],
+)
+def test_dockerfile_requirements_warns_about_a_local_npm_install_with_a_package_json(tmp_path, copy, files):
+    body = f"{copy}RUN npm install left-pad\n{_INSTALL}"
+    _, report = _inputs(tmp_path, body, files)
+    assert [line for line, _ in report.warnings] == [5]
+    # With --deps it stops, as a bare install does.
+    path = _context(tmp_path, f"FROM python:3.13\nWORKDIR /app\n{body}", files)
+    with pytest.raises(DockerfileError, match="runs the project's own code"):
+        dockerfile_requirements(path, constraints={}, dependencies=True)
+
+
+def test_dockerfile_requirements_warns_about_an_npm_install_below_a_package_json(tmp_path):
+    # npm's project is the nearest folder up the tree with a package.json: one copied into /app counts for an
+    # install run in /app/scripts, which has none itself.
+    dockerfile_text = (
+        "FROM python:3.13\nCOPY . /app\nWORKDIR /app/scripts\nRUN npm install left-pad\n"
+        "RUN pip install -r /app/requirements.txt\n"
+    )
+    path = _context(tmp_path / "walkup", dockerfile_text, ("requirements.txt", "package.json"))
+    report = InputsReport()
+    dockerfile_requirements(path, report=report, uv_installs=set(), constraints={})
+    assert [line for line, _ in report.warnings] == [4]
+    # An explicit --prefix is taken as given: only that folder counts, not the folders above it.
+    dockerfile_text = dockerfile_text.replace("npm install left-pad", "npm install --prefix scripts left-pad")
+    path = _context(tmp_path / "prefix", dockerfile_text, ("requirements.txt", "package.json"))
+    report = InputsReport()
+    dockerfile_requirements(path, report=report, uv_installs=set(), constraints={})
+    assert report.warnings == [] and list(report.passed_over) == ["programs"]
+
+
+def test_dockerfile_requirements_warns_about_an_npm_install_into_a_prefix_with_a_package_json(tmp_path):
+    # --prefix picks npm's working folder: a package.json copied there is what counts, not one in the RUN's.
+    body = "COPY frontend frontend\nRUN npm install --prefix frontend left-pad\n" + _INSTALL
+    _, report = _inputs(tmp_path / "with", body, ("requirements.txt", "frontend/package.json"))
+    assert [line for line, _ in report.warnings] == [5]
+    # With no package.json in the copied folder, the same line is a plain program again.
+    _, report = _inputs(tmp_path / "without", body, ("requirements.txt", "frontend/index.js"))
+    assert report.warnings == [] and list(report.passed_over) == ["programs"]
+
+
+def test_dockerfile_requirements_warns_about_an_npm_prefix_under_home(tmp_path):
+    # The shell expands `~` to a home folder wheelgap doesn't know, so a package.json there can't be ruled out.
+    _, report = _inputs(tmp_path, f"RUN npm install --prefix ~/app left-pad\n{_INSTALL}")
+    assert report.passed_over == {} and [line for line, _ in report.warnings] == [4]
+
+
 @pytest.mark.parametrize("run", ["npm install -g", "npm install -g ./tools/cli", "yarn global add file:./cli"])
 def test_dockerfile_requirements_warns_about_a_global_install_of_the_project(tmp_path, run):
     _, report = _inputs(tmp_path, f"{_INSTALL}RUN {run}\n")
