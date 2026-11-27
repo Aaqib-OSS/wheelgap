@@ -93,6 +93,7 @@ nav:
       - Litestar: case-studies/litestar.md
       - FastMCP: case-studies/fastmcp.md
       - Pydantic AI: case-studies/pydantic-ai.md
+      - LangGraph: case-studies/langgraph.md
       - MCP Python SDK: case-studies/mcp-python-sdk.md
       - Prefect: case-studies/prefect.md
       - urllib3: case-studies/urllib3.md
